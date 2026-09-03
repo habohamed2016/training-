@@ -81,7 +81,100 @@ export const TraineeTracker: React.FC<TraineeTrackerProps> = ({
   ).toFixed(1);
 
   const handlePrint = () => {
-    window.print();
+    const reportElem = document.getElementById('official-evaluation-certificate');
+    if (!reportElem) {
+      window.print();
+      return;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8" />
+          <title>تقرير تقييم واعتماد المتدرب - ${traineeName} - PDF</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+          <style>
+            @page {
+              size: A4;
+              margin: 14mm 12mm 14mm 12mm;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
+              color: #0f172a;
+              font-family: 'IBM Plex Sans Arabic', sans-serif;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            @media print {
+              .no-print {
+                display: none !important;
+              }
+            }
+            .toolbar {
+              position: fixed;
+              top: 0;
+              left: 0;
+              right: 0;
+              background: #0f172a;
+              color: #fff;
+              padding: 12px 24px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              z-index: 9999;
+            }
+            .toolbar button {
+              background: #0284c7;
+              color: #fff;
+              border: none;
+              padding: 8px 18px;
+              font-weight: bold;
+              font-size: 14px;
+              border-radius: 6px;
+              cursor: pointer;
+              font-family: inherit;
+            }
+            .certificate-wrapper {
+              margin-top: 60px;
+              padding: 20px 24px;
+              max-width: 800px;
+              margin-left: auto;
+              margin-right: auto;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="toolbar no-print">
+            <div>
+              <strong>تقرير التقييم الميداني والاعتماد الأكاديمي (PDF)</strong>
+              <span style="font-size: 12px; color: #94a3b8; margin-right: 12px;">اختر "Save as PDF" أو "حفظ بتنسيق PDF" في خيارات الطابعة</span>
+            </div>
+            <button onclick="window.print()">🖨️ حفظ وطباعة التقرير (PDF)</button>
+          </div>
+          <div class="certificate-wrapper">
+            ${reportElem.outerHTML}
+          </div>
+          <script>
+            setTimeout(() => {
+              window.print();
+            }, 600);
+          </script>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
   };
 
   return (

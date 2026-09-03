@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import Markdown from 'react-markdown';
 import { HSRTopic } from '../types';
 import {
+  downloadCustomMarkdownAsPdfFile,
+  printCustomMarkdownAsPdf,
+} from '../utils/pdfExport';
+import {
   Sparkles,
   FileText,
   Download,
@@ -14,6 +18,7 @@ import {
   Wrench,
   ShieldCheck,
   Send,
+  FileCheck,
 } from 'lucide-react';
 
 interface AIDocumentGeneratorProps {
@@ -33,6 +38,7 @@ export const AIDocumentGenerator: React.FC<AIDocumentGeneratorProps> = ({
   const [documentType, setDocumentType] = useState('دليل تدريبي هندسي متكامل');
   const [customPrompt, setCustomPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<string | null>(null);
   const [isOfflineResult, setIsOfflineResult] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -93,22 +99,34 @@ export const AIDocumentGenerator: React.FC<AIDocumentGeneratorProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = () => {
+  const handleDownloadPdf = async () => {
     if (!generatedContent) return;
-    const blob = new Blob([generatedContent], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = window.document.createElement('a');
-    a.href = url;
-    const cleanName = topicTitle.replace(/[\s/\\:]+/g, '_');
-    a.download = `HSR_Training_${cleanName}.md`;
-    window.document.body.appendChild(a);
-    a.click();
-    window.document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setIsDownloadingPdf(true);
+    try {
+      await downloadCustomMarkdownAsPdfFile(
+        topicTitle || 'HSR_Training_Document',
+        generatedContent,
+        `${subsystem} • ${targetLevel}`
+      );
+    } catch (e) {
+      console.error('PDF download error:', e);
+      printCustomMarkdownAsPdf(
+        topicTitle || 'HSR_Training_Document',
+        generatedContent,
+        `${subsystem} • ${targetLevel}`
+      );
+    } finally {
+      setIsDownloadingPdf(false);
+    }
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrintPdf = () => {
+    if (!generatedContent) return;
+    printCustomMarkdownAsPdf(
+      topicTitle || 'HSR_Training_Document',
+      generatedContent,
+      `${subsystem} • ${targetLevel}`
+    );
   };
 
   const quickSamples = [
@@ -329,25 +347,38 @@ export const AIDocumentGenerator: React.FC<AIDocumentGeneratorProps> = ({
                 <button
                   onClick={handleCopy}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer"
+                  title="نسخ المحتوى كـ نص"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copied ? 'تم النسخ' : 'نسخ'}</span>
                 </button>
 
                 <button
-                  onClick={handleDownload}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-colors cursor-pointer shadow-sm shadow-cyan-500/20"
+                  onClick={handlePrintPdf}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer"
+                  title="طباعة أو تصدير مباشر عبر خيارات الطابعة بصيغة PDF"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>تحميل (.md)</span>
+                  <Printer className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>طباعة / حفظ PDF</span>
                 </button>
 
                 <button
-                  onClick={handlePrint}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer"
+                  onClick={handleDownloadPdf}
+                  disabled={isDownloadingPdf}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-colors cursor-pointer shadow-sm shadow-rose-600/30 disabled:opacity-50"
+                  title="تحميل كملف PDF مباشر"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>طباعة</span>
+                  {isDownloadingPdf ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>تجهيز الـ PDF...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>تحميل كـ PDF</span>
+                    </>
+                  )}
                 </button>
               </div>
             )}

@@ -2,6 +2,11 @@ import React, { useState } from 'react';
 import { PREBUILT_DOCUMENTS } from '../data/prebuiltDocuments';
 import { PrebuiltDocument } from '../types';
 import {
+  downloadDocumentAsPdfFile,
+  printDocumentAsPdf,
+  printAllDocumentsAsSinglePdf,
+} from '../utils/pdfExport';
+import {
   FileText,
   Download,
   Printer,
@@ -15,6 +20,7 @@ import {
   Wrench,
   HelpCircle,
   Archive,
+  FileCheck,
 } from 'lucide-react';
 
 interface DocumentsDirectoryProps {
@@ -26,15 +32,17 @@ export const DocumentsDirectory: React.FC<DocumentsDirectoryProps> = ({
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
   const [downloadedDocId, setDownloadedDocId] = useState<string | null>(null);
+  const [isBatchDownloading, setIsBatchDownloading] = useState(false);
 
   const categories = [
-    { id: 'all', label: 'جميع الملفات' },
-    { id: 'منهج وخطة', label: 'المناهج والخطط (Syllabus)' },
-    { id: 'أدلة هندسية', label: 'الأدلة الهندسية (Guides)' },
-    { id: 'تمارين حقلية', label: 'التمارين الحقلية (Worksheets)' },
-    { id: 'سيناريوهات أعطال', label: 'سيناريوهات الأعطال (Cases)' },
-    { id: 'سلامة وتقييم', label: 'السلامة والتقييم (Exams)' },
+    { id: 'all', label: 'جميع ملفات الـ PDF' },
+    { id: 'منهج وخطة', label: 'المناهج والخطط (Syllabus PDF)' },
+    { id: 'أدلة هندسية', label: 'الأدلة الهندسية (Guides PDF)' },
+    { id: 'تمارين حقلية', label: 'التمارين الحقلية (Worksheets PDF)' },
+    { id: 'سيناريوهات أعطال', label: 'سيناريوهات الأعطال (Cases PDF)' },
+    { id: 'سلامة وتقييم', label: 'السلامة والتقييم (Exams PDF)' },
   ];
 
   const filteredDocs = PREBUILT_DOCUMENTS.filter((doc) => {
@@ -50,49 +58,46 @@ export const DocumentsDirectory: React.FC<DocumentsDirectoryProps> = ({
     );
   });
 
-  const handleDownloadSingle = (doc: PrebuiltDocument, e: React.MouseEvent) => {
+  const handleDownloadSinglePdf = async (doc: PrebuiltDocument, e: React.MouseEvent) => {
     e.stopPropagation();
-    const blob = new Blob([doc.markdownContent], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = window.document.createElement('a');
-    a.href = url;
-    a.download = doc.fileName;
-    window.document.body.appendChild(a);
-    a.click();
-    window.document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    setDownloadedDocId(doc.id);
-    setTimeout(() => setDownloadedDocId(null), 2000);
+    setDownloadingDocId(doc.id);
+    try {
+      await downloadDocumentAsPdfFile(doc);
+      setDownloadedDocId(doc.id);
+      setTimeout(() => setDownloadedDocId(null), 3000);
+    } catch (err) {
+      console.error('Failed to download PDF:', err);
+      // Fallback to print dialog
+      printDocumentAsPdf(doc);
+    } finally {
+      setDownloadingDocId(null);
+    }
   };
 
-  const handleDownloadAll = () => {
-    // Generate combined training handbook
-    const combinedContent = `# 🚄 حقيبة تدريب مهندسي الاتصالات والإشارات - قطارات فائقة السرعة
-**Comprehensive High-Speed Rail Telecom & Signalling Training Package**
-تاريخ الإصدار: ${new Date().toLocaleDateString('ar-SA')}
+  const handlePrintSinglePdf = (doc: PrebuiltDocument, e: React.MouseEvent) => {
+    e.stopPropagation();
+    printDocumentAsPdf(doc);
+  };
 
----
+  const handleDownloadAllAsSinglePdf = () => {
+    printAllDocumentsAsSinglePdf(PREBUILT_DOCUMENTS);
+  };
 
-${PREBUILT_DOCUMENTS.map((doc, idx) => `
-================================================================================
-## الملحق (${idx + 1}): ${doc.titleAr}
-### ${doc.titleEn}
-التصنيف: ${doc.category} | الجمهور المستهدف: ${doc.targetAudience}
-================================================================================
-
-${doc.markdownContent}
-`).join('\n\n')}`;
-
-    const blob = new Blob([combinedContent], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = window.document.createElement('a');
-    a.href = url;
-    a.download = `HSR_Telecom_Signalling_Complete_Training_Package.md`;
-    window.document.body.appendChild(a);
-    a.click();
-    window.document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const handleBatchDownloadAllPdfs = async () => {
+    setIsBatchDownloading(true);
+    try {
+      for (const doc of PREBUILT_DOCUMENTS) {
+        setDownloadingDocId(doc.id);
+        await downloadDocumentAsPdfFile(doc);
+        // Small pause between file triggers
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    } catch (e) {
+      console.error('Error during batch PDF download:', e);
+    } finally {
+      setIsBatchDownloading(false);
+      setDownloadingDocId(null);
+    }
   };
 
   const getCategoryBadge = (category: string) => {
@@ -115,29 +120,53 @@ ${doc.markdownContent}
   return (
     <div className="space-y-6">
       {/* Banner / Package download action */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5 shadow-xl">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-              الملفات التدريبية الجاهزة للتسليم والطباعة
+              الملفات التدريبية الهندسية بصيغة PDF الرسمية
             </h2>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 font-medium">
-              8 ملفات أساسية
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800/80 font-bold flex items-center gap-1">
+              <FileCheck className="w-3.5 h-3.5" />
+              8 ملفات PDF معتمدة
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-300 mt-1.5 max-w-2xl leading-relaxed">
-            تمت صياغة هذه الملفات هندسياً بصيغة قابلة للطباعة الفورية والتسليم المباشر للمتدرب، وتشمل خطط الأسابيع، الأدلة الفنية، كراسات المهام والقياسات الحقلية، وسيناريوهات الأعطال ونماذج التقييم المعتمدة للجامعة.
+            جميع الملفات مجهزة بصيغة PDF جاهزة للطباعة والتسليم الفوري للمتدرب، متضمنة الهيدر الرسمي وشعار الهيئة ومصفوفة التقييم وخانات توقيع المشرف والمهندس المتدرب.
           </p>
         </div>
 
-        <button
-          id="btn-download-all-package"
-          onClick={handleDownloadAll}
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm shadow-lg shadow-cyan-500/20 transition-all cursor-pointer whitespace-nowrap flex-shrink-0"
-        >
-          <Archive className="w-4 h-4" />
-          <span>تحميل الحقيبة التدريبية كاملة (.md)</span>
-        </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-shrink-0">
+          <button
+            id="btn-download-all-package-pdf"
+            onClick={handleDownloadAllAsSinglePdf}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs sm:text-sm shadow-lg shadow-cyan-500/25 transition-all cursor-pointer whitespace-nowrap"
+            title="تصدير الحقيبة التدريبية كاملة في ملف PDF واحد موحد"
+          >
+            <Printer className="w-4 h-4" />
+            <span>حفظ الحقيبة كاملة PDF (ملف موحد)</span>
+          </button>
+
+          <button
+            id="btn-batch-download-pdfs"
+            disabled={isBatchDownloading}
+            onClick={handleBatchDownloadAllPdfs}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
+            title="تحميل كل ملف من الملفات الثمانية كملف PDF مستقل"
+          >
+            {isBatchDownloading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                <span>جاري تصدير ملفات PDF...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 text-cyan-400" />
+                <span>تحميل الـ 8 ملفات منفصلة (PDF)</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search */}
@@ -149,7 +178,7 @@ ${doc.markdownContent}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ابحث في عناوين الملفات التدريبية (مثال: جدول 8 أسابيع, مهام حقلية, ETCS, GSM-R, سيناريوهات أعطال)..."
+            placeholder="ابحث في عناوين ملفات الـ PDF التدريبية (مثال: جدول 8 أسابيع, مهام حقلية, ETCS, GSM-R, سيناريوهات أعطال)..."
             className="w-full bg-slate-900 border border-slate-700/80 rounded-xl pr-11 pl-4 py-2.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all"
           />
         </div>
@@ -175,6 +204,7 @@ ${doc.markdownContent}
       {/* Documents Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredDocs.map((doc) => {
+          const isDownloading = downloadingDocId === doc.id;
           const isDownloaded = downloadedDocId === doc.id;
           return (
             <div
@@ -194,8 +224,9 @@ ${doc.markdownContent}
                     </span>
                   </div>
 
-                  <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-800" dir="ltr">
-                    {doc.fileName.split('.').pop()?.toUpperCase()}
+                  <span className="text-[10px] font-mono font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-800/80 flex items-center gap-1" dir="ltr">
+                    <FileText className="w-3 h-3" />
+                    PDF
                   </span>
                 </div>
 
@@ -212,14 +243,19 @@ ${doc.markdownContent}
                   {doc.summary}
                 </p>
 
-                <div className="pt-2 text-[11px] text-slate-400 flex items-center gap-1.5 border-t border-slate-800/80">
-                  <span className="text-slate-500">الجمهور:</span>
-                  <span className="text-slate-300">{doc.targetAudience}</span>
+                <div className="pt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-800/80">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500">الجمهور:</span>
+                    <span className="text-slate-300">{doc.targetAudience}</span>
+                  </div>
+                  <span className="text-[10px] text-cyan-400/90 font-medium">
+                    معدّ للطباعة المباشرة
+                  </span>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -228,24 +264,39 @@ ${doc.markdownContent}
                   className="flex items-center gap-1.5 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
                 >
                   <Eye className="w-4 h-4" />
-                  <span>عرض وقراءة الملف</span>
+                  <span>معاينة وتصفح</span>
                 </button>
 
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={(e) => handleDownloadSingle(doc, e)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition-colors"
-                    title="تحميل الملف مباشرة بصيغة .md"
+                    onClick={(e) => handlePrintSinglePdf(doc, e)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer"
+                    title="طباعة أو تصدير فوري لـ PDF عالي الدقة"
                   >
-                    {isDownloaded ? (
+                    <Printer className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>طباعة / حفظ</span>
+                  </button>
+
+                  <button
+                    onClick={(e) => handleDownloadSinglePdf(doc, e)}
+                    disabled={isDownloading}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-colors cursor-pointer shadow-sm shadow-rose-600/30 disabled:opacity-50"
+                    title="تحميل ملف PDF مباشرة"
+                  >
+                    {isDownloading ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="text-emerald-400">تم التحميل</span>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>جاري التجهيز...</span>
+                      </>
+                    ) : isDownloaded ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-white" />
+                        <span>تم التحميل!</span>
                       </>
                     ) : (
                       <>
                         <Download className="w-3.5 h-3.5" />
-                        <span>تحميل</span>
+                        <span>تحميل PDF</span>
                       </>
                     )}
                   </button>
